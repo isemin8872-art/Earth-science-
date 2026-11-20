@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>은하 이미지 분류 실험실</title>
+<style>
+:root{--bg:#0b1020;--panel:#151d33;--line:#2b3857;--text:#edf3ff;--muted:#aab7d1;--blue:#75a7ff;--green:#65d6a2;--red:#ff8c9a}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1a2b50,#0b1020 55%);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;padding:22px}
+main{max-width:980px;margin:auto}h1{font-size:clamp(25px,5vw,38px);margin:8px 0}p{line-height:1.65;color:var(--muted)}.sub{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0}
+.card{background:rgba(21,29,51,.94);border:1px solid var(--line);border-radius:16px;padding:17px}
+h2{font-size:18px;margin:0 0 10px}.count{font-size:13px;color:var(--muted);margin:8px 0}
+input[type=file]{width:100%;font-size:13px;color:var(--muted);margin:10px 0}
+button{border:0;border-radius:11px;padding:12px 16px;font-weight:700;cursor:pointer;background:var(--blue);color:#091326;margin:5px 5px 5px 0}
+button.secondary{background:#344362;color:var(--text)}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.status{padding:13px;border-radius:12px;background:#101a30;border:1px solid var(--line);color:var(--muted);white-space:pre-line}
+.preview{display:flex;gap:7px;flex-wrap:wrap}.thumb{width:58px;height:58px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+#result{display:none;margin-top:15px}.bar{height:10px;background:#26334e;border-radius:20px;overflow:hidden;margin:6px 0 12px}.bar span{display:block;height:100%;background:linear-gradient(90deg,#659dff,#65d6a2);width:0}
+.note{font-size:13px}.warn{color:#ffd28a}.good{color:var(--green)}.bad{color:var(--red)}
+label{font-weight:700}.foot{font-size:12px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>은하 이미지 분류 실험실</h1>
+<p class="sub">타원 은하 · 나선은하 · 불규칙 은하의 예시 사진을 직접 등록하고, 이미지 특징을 학습시킨 뒤 새 사진을 분류해 보는 간단한 웹 실험입니다.</p>
+
+<div class="status" id="status">먼저 각 종류의 사진을 등록하세요. 이미지 파일은 이 브라우저 안에서 처리되며 서버로 전송되지 않습니다.</div>
+
+<div class="grid">
+ <section class="card">
+  <h2>① 타원 은하</h2><p class="note">둥글거나 타원형이며 뚜렷한 나선팔이 없는 은하</p>
+  <label for="elliptical">학습 사진 선택</label>
+  <input id="elliptical" type="file" accept="image/*" multiple>
+  <div class="count" id="ellipticalCount">등록된 사진: 0장 (권장 5장 이상)</div><div class="preview" id="ellipticalPreview"></div>
+ </section>
+ <section class="card">
+  <h2>② 나선은하</h2><p class="note">중심부와 나선팔이 구분되는 은하</p>
+  <label for="spiral">학습 사진 선택</label>
+  <input id="spiral" type="file" accept="image/*" multiple>
+  <div class="count" id="spiralCount">등록된 사진: 0장 (권장 5장 이상)</div><div class="preview" id="spiralPreview"></div>
+ </section>
+ <section class="card">
+  <h2>③ 불규칙 은하</h2><p class="note">뚜렷한 대칭 구조나 일정한 형태가 없는 은하</p>
+  <label for="irregular">학습 사진 선택</label>
+  <input id="irregular" type="file" accept="image/*" multiple>
+  <div class="count" id="irregularCount">등록된 사진: 0장 (권장 5장 이상)</div><div class="preview" id="irregularPreview"></div>
+ </section>
+</div>
+
+<section class="card">
+ <h2>② 이미지 특징 학습</h2>
+ <p class="note">각 사진을 작은 크기로 변환하고 밝기 분포·색상 분포·중심부와 바깥쪽의 밝기 차이 등 간단한 특징값을 추출합니다. 각 종류의 특징 평균을 만들어 분류 기준으로 사용합니다.</p>
+ <div class="actions"><button id="trainBtn">이미지 학습하기</button><button class="secondary" id="clearBtn">전체 초기화</button></div>
+ <div class="status" id="trainStatus">아직 학습 전입니다.</div>
+</section>
+
+<section class="card" style="margin-top:14px">
+ <h2>③ 새로운 은하 사진 분류</h2>
+ <input id="testImage" type="file" accept="image/*">
+ <div class="preview" id="testPreview"></div>
+ <div class="actions"><button id="predictBtn" disabled>은하 형태 분류하기</button></div>
+ <div id="result" class="status">
+  <div id="winner" style="font-size:20px;font-weight:800"></div>
+  <p id="detail"></p>
+  <div id="scores"></div>
+ </div>
+</section>
+
+<p class="foot warn">탐구상 주의: 이 프로그램은 CNN 같은 딥러닝 모델이 아니라, 업로드한 사진에서 계산한 간단한 이미지 특징을 비교하는 교육용 분류기입니다. 사진 수가 적거나 배경·밝기·방향이 다르면 오분류할 수 있습니다. 실제 천문학 연구의 은하 분류와는 차이가 있습니다.</p>
+</main>
+<script>
+const classes=[
+ {id:'elliptical',name:'타원 은하'},
+ {id:'spiral',name:'나선은하'},
+ {id:'irregular',name:'불규칙 은하'}
+];
+const files={elliptical:[],spiral:[],irregular:[]};
+let model=null,testFile=null;
+const $=id=>document.getElementById(id);
+function say(msg){$('status').textContent=msg}
+function loadImage(file){return new Promise((resolve,reject)=>{
+ const url=URL.createObjectURL(file), img=new Image();
+ img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+ img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(file.name+' 이미지를 읽지 못했습니다.'))};
+ img.src=url;
+})}
+function feature(img){
+ const size=32, c=document.createElement('canvas');c.width=size;c.height=size;
+ const ctx=c.getContext('2d',{willReadFrequently:true});
+ ctx.fillStyle='#000';ctx.fillRect(0,0,size,size);
+ const scale=Math.min(size/img.width,size/img.height),w=img.width*scale,h=img.height*scale;
+ ctx.drawImage(img,(size-w)/2,(size-h)/2,w,h);
+ const d=ctx.getImageData(0,0,size,size).data;
+ let f=[], bins=new Array(8).fill(0), radial=[0,0,0,0], radialN=[0,0,0,0];
+ let total=0, bright=0, asym=0;
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const i=(y*size+x)*4,r=d[i],g=d[i+1],b=d[i+2];
+  const lum=(.299*r+.587*g+.114*b)/255;
+  const sat=(Math.max(r,g,b)-Math.min(r,g,b))/255;
+  const bin=Math.min(7,Math.floor(lum*8));bins[bin]++;
+  const dx=(x-15.5)/15.5,dy=(y-15.5)/15.5,dist=Math.sqrt(dx*dx+dy*dy);
+  const ring=Math.min(3,Math.floor(dist*2));
+  radial[ring]+=lum;radialN[ring]++;
+  total+=lum; if(lum>.25)bright++;
+  const mx=31-x; if(x<16)asym+=Math.abs(lum-d[(y*size+mx)*4]/255);
+ }
+ for(let v of bins)f.push(v/(size*size));
+ for(let j=0;j<4;j++)f.push(radial[j]/Math.max(1,radialN[j]));
+ f.push(total/(size*size),bright/(size*size),asym/(size*16));
+ // Coarse spatial brightness grid retains some shape information.
+ for(let gy=0;gy<4;gy++)for(let gx=0;gx<4;gx++){
+  let s=0,n=0;for(let y=gy*8;y<(gy+1)*8;y++)for(let x=gx*8;x<(gx+1)*8;x++){s+=(.299*d[(y*size+x)*4]+.587*d[(y*size+x)*4+1]+.114*d[(y*size+x)*4+2])/255;n++}
+  f.push(s/n);
+ }
+ return f;
+}
+function distance(a,b){let s=0;for(let i=0;i<a.length;i++){let z=a[i]-b[i];s+=z*z}return Math.sqrt(s/a.length)}
+function updateClass(id){
+ const arr=files[id], count=$(id+'Count'), preview=$(id+'Preview');
+ count.textContent=`등록된 사진: ${arr.length}장 (권장 5장 이상)`;
+ preview.innerHTML='';
+ arr.slice(0,8).forEach(file=>{const im=document.createElement('img');im.className='thumb';im.alt=file.name;im.src=URL.createObjectURL(file);preview.appendChild(im)});
+ if(arr.length>8){const s=document.createElement('span');s.textContent=`외 ${arr.length-8}장`;s.className='note';preview.appendChild(s)}
+}
+classes.forEach(c=>$(c.id).addEventListener('change',e=>{
+ files[c.id]=[...e.target.files].filter(f=>f.type.startsWith('image/'));
+ updateClass(c.id);model=null;$('predictBtn').disabled=true;
+ say(`${c.name}: ${files[c.id].length}장의 이미지를 등록했습니다. 세 종류 모두 등록한 뒤 학습하세요.`);
+}));
+$('trainBtn').addEventListener('click',async()=>{
+ const missing=classes.filter(c=>files[c.id].length===0);
+ if(missing.length){$('trainStatus').textContent='학습할 수 없습니다. 사진이 없는 종류: '+missing.map(x=>x.name).join(', ');return}
+ $('trainBtn').disabled=true;$('trainStatus').textContent='이미지를 분석하고 있습니다...';
+ try{
+  const vectors={};
+  for(const c of classes){
+   vectors[c.id]=[];
+   for(const file of files[c.id]){
+    const img=await loadImage(file);vectors[c.id].push(feature(img));
+   }
+  }
+  const means={};
+  for(const c of classes){
+   const rows=vectors[c.id],len=rows[0].length;
+   means[c.id]=Array(len).fill(0);
+   rows.forEach(row=>row.forEach((v,i)=>means[c.id][i]+=v/rows.length));
+  }
+  model={means,counts:Object.fromEntries(classes.map(c=>[c.id,files[c.id].length]))};
+  $('trainStatus').innerHTML='<span class="good">학습 완료!</span> 종류별 사진 '+classes.map(c=>c.name+' '+files[c.id].length+'장').join(' / ')+'을 분석했습니다. 이제 새로운 사진을 분류할 수 있습니다.';
+  $('predictBtn').disabled=!testFile;
+ }catch(err){$('trainStatus').textContent='학습 중 오류: '+err.message}
+ finally{$('trainBtn').disabled=false}
+});
+$('testImage').addEventListener('change',e=>{
+ testFile=e.target.files[0]||null;$('testPreview').innerHTML='';
+ if(testFile){const im=document.createElement('img');im.className='thumb';im.alt='분류할 은하 사진';im.src=URL.createObjectURL(testFile);$('testPreview').appendChild(im)}
+ $('predictBtn').disabled=!(model&&testFile);$('result').style.display='none';
+});
+$('predictBtn').addEventListener('click',async()=>{
+ if(!model||!testFile)return;
+ try{
+  const img=await loadImage(testFile),v=feature(img);
+  const ds=classes.map(c=>({c,d:distance(v,model.means[c.id])}));
+  const min=Math.min(...ds.map(x=>x.d));
+  const weights=ds.map(x=>Math.exp(-(x.d-min)*8));
+  const sum=weights.reduce((a,b)=>a+b,0);
+  ds.forEach((x,i)=>x.score=weights[i]/sum*100);
+  ds.sort((a,b)=>b.score-a.score);
+  $('winner').textContent='예측 결과: '+ds[0].c.name;
+  $('detail').textContent='업로드한 사진의 이미지 특징이 학습한 '+ds[0].c.name+'의 평균 특징과 가장 가깝습니다. 아래 수치는 모델 내부의 상대적 유사도이며, 검증된 정확도는 아닙니다.';
+  $('scores').innerHTML='';
+  ds.forEach(x=>{const wrap=document.createElement('div');const label=document.createElement('div');label.textContent=x.c.name+' · '+x.score.toFixed(1)+'%';const bar=document.createElement('div');bar.className='bar';const span=document.createElement('span');span.style.width=x.score+'%';bar.appendChild(span);wrap.append(label,bar);$('scores').appendChild(wrap)});
+  $('result').style.display='block';
+ }catch(err){$('result').style.display='block';$('winner').textContent='분류 오류';$('detail').textContent=err.message}
+});
+$('clearBtn').addEventListener('click',()=>{
+ classes.forEach(c=>{files[c.id]=[];$(c.id).value='';updateClass(c.id)});
+ model=null;testFile=null;$('testImage').value='';$('testPreview').innerHTML='';$('predictBtn').disabled=true;$('result').style.display='none';
+ $('trainStatus').textContent='초기화했습니다. 다시 사진을 등록하세요.';say('모든 학습 데이터가 초기화되었습니다.');
+});
+</script>
+</body>
+</html>
